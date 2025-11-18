@@ -131,7 +131,7 @@ def test_model_nogt_dir(mdl, device, input_dir, scale=2,
     save_dir = _ensure_outdir()
 
     # 收集影像
-    exts = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif', '*.tiff')
+    exts = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif', '*.tiff', '*.raw')
     img_paths = []
     for e in exts:
         img_paths += glob.glob(os.path.join(input_dir, e))
@@ -155,11 +155,34 @@ def test_model_nogt_dir(mdl, device, input_dir, scale=2,
 
     with torch.no_grad():
         for p in tqdm(img_paths, ncols=80):
-            # 讀圖：BGR、uint8、0~255
-            bgr = cv2.imread(p, cv2.IMREAD_COLOR)
-            if bgr is None:
-                print(f"[WARN] cannot read: {p}")
-                continue
+            # Check if it's a raw file
+            if p.endswith('.raw'):
+                from utility import read_raw_image, parse_raw_filename
+                from option import args
+                
+                # Try to parse dimensions from filename
+                width, height = parse_raw_filename(p)
+                
+                # Use command-line args if dimensions not in filename
+                if width is None or height is None:
+                    width = getattr(args, 'raw_width', None)
+                    height = getattr(args, 'raw_height', None)
+                    
+                if width is None or height is None:
+                    print(f"[WARN] Cannot determine dimensions for raw file: {p}, skipping...")
+                    continue
+                
+                # Read raw image (grayscale)
+                gray = read_raw_image(p, width, height, bit_depth=getattr(args, 'raw_bit_depth', 14))
+                
+                # Convert grayscale to BGR for consistency
+                bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            else:
+                # 讀圖：BGR、uint8、0~255
+                bgr = cv2.imread(p, cv2.IMREAD_COLOR)
+                if bgr is None:
+                    print(f"[WARN] cannot read: {p}")
+                    continue
 
             # [H,W,3] → [1,3,H,W]、float32、0~255
             arr = bgr.transpose(2, 0, 1).astype(np.float32)
