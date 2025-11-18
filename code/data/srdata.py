@@ -86,14 +86,43 @@ class SRData(data.Dataset):
         self.dir_hr = os.path.join(self.apath, 'HR')
         self.dir_lr = os.path.join(self.apath, 'LR_bicubic')
         if self.input_large: self.dir_lr += 'L'
-        self.ext = ('.png', '.png')
+        # Check if raw files should be used
+        if hasattr(self.args, 'raw_bit_depth') and self.args.raw_bit_depth:
+            self.ext = ('.raw', '.raw')
+        else:
+            self.ext = ('.png', '.png')
 
     def _check_and_load(self, ext, img, f, verbose=True):
         if not os.path.isfile(f) or ext.find('reset') >= 0:
             if verbose:
                 print('Making a binary: {}'.format(f))
+            
+            # Check if it's a raw file
+            if img.endswith('.raw'):
+                from utility import read_raw_image, parse_raw_filename
+                
+                # Try to parse dimensions from filename
+                width, height = parse_raw_filename(img)
+                
+                # Use command-line args if dimensions not in filename
+                if width is None or height is None:
+                    width = self.args.raw_width
+                    height = self.args.raw_height
+                    
+                if width is None or height is None:
+                    raise ValueError(
+                        f"Cannot determine dimensions for raw file: {img}\n"
+                        f"Either include dimensions in filename (e.g., image_640x480.raw) "
+                        f"or use --raw_width and --raw_height arguments"
+                    )
+                
+                # Read raw image
+                img_data = read_raw_image(img, width, height, bit_depth=self.args.raw_bit_depth)
+            else:
+                img_data = imageio.imread(img)
+            
             with open(f, 'wb') as _f:
-                pickle.dump(imageio.imread(img), _f)
+                pickle.dump(img_data, _f)
 
     def __getitem__(self, idx):
         lr, hr, filename = self._load_file(idx)
@@ -122,8 +151,32 @@ class SRData(data.Dataset):
 
         filename, _ = os.path.splitext(os.path.basename(f_hr))
         if self.args.ext == 'img' or self.benchmark:
-            hr = imageio.imread(f_hr)
-            lr = imageio.imread(f_lr)
+            # Check if raw files
+            if f_hr.endswith('.raw'):
+                from utility import read_raw_image, parse_raw_filename
+                
+                # Parse HR dimensions
+                width_hr, height_hr = parse_raw_filename(f_hr)
+                if width_hr is None or height_hr is None:
+                    width_hr = self.args.raw_width
+                    height_hr = self.args.raw_height
+                if width_hr is None or height_hr is None:
+                    raise ValueError(f"Cannot determine dimensions for raw file: {f_hr}")
+                
+                hr = read_raw_image(f_hr, width_hr, height_hr, bit_depth=self.args.raw_bit_depth)
+                
+                # Parse LR dimensions
+                width_lr, height_lr = parse_raw_filename(f_lr)
+                if width_lr is None or height_lr is None:
+                    # For LR, dimensions should be scaled down
+                    scale = self.scale[self.idx_scale]
+                    width_lr = width_hr // scale
+                    height_lr = height_hr // scale
+                
+                lr = read_raw_image(f_lr, width_lr, height_lr, bit_depth=self.args.raw_bit_depth)
+            else:
+                hr = imageio.imread(f_hr)
+                lr = imageio.imread(f_lr)
         elif self.args.ext.find('sep') >= 0:
             with open(f_hr, 'rb') as _f:
                 hr = pickle.load(_f)

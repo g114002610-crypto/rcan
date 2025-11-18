@@ -42,6 +42,14 @@ parser.add_argument('--chop', action='store_true',
 parser.add_argument('--no_augment', action='store_true',
                     help='do not use data augmentation')
 
+# Raw image specifications
+parser.add_argument('--raw_bit_depth', type=int, default=14,
+                    help='bit depth for raw images (default: 14)')
+parser.add_argument('--raw_width', type=int, default=None,
+                    help='width for raw images (if not in filename)')
+parser.add_argument('--raw_height', type=int, default=None,
+                    help='height for raw images (if not in filename)')
+
 # Model specifications
 parser.add_argument('--model', default='SESR-Rep',
                     help='model name')
